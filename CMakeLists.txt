@@ -77,6 +77,13 @@ if(WITH_VIDEO_DECODING)
   endif()
 endif()
 
+# macOS audio playback (CoreAudio AudioQueue). Enabled automatically when
+# building on Apple with video decoding enabled.
+if(APPLE AND WITH_VIDEO_DECODING)
+  pkg_check_modules(SWRESAMPLE IMPORTED_TARGET REQUIRED libswresample)
+  set(TIMG_AUDIO_SUPPORT ON)
+endif()
+
 find_package(Threads)
 
 add_subdirectory(src)
