@@ -275,7 +275,12 @@ static int usage(const char *progname, ExitCode exit_code, int width,
         "these)\n"
         "\t--frame-offset=<num>: Start animation/video at this frame\n"
         "\t-t<seconds>   : Stop after this time, independent of --loops or "
-        "--frames\n",
+        "--frames\n"
+#ifdef WITH_TIMG_AUDIO
+        "\t--audio        : (macOS) Play the audio track of a video file.\n"
+        "\t                 Ignored in grid or multi-file mode.\n"
+#endif
+        ,
         default_title ? "='" : "", default_title ? default_title : "",
         default_title ? "'" : "", width, height, kDefaultThreadCount,
         timg::timgVersion());
@@ -488,11 +493,15 @@ int main(int argc, char *argv[]) {
         OPT_MANPAGE_HELP,
         OPT_AUTO_CROP,
         OPT_SCROLL,
+        OPT_AUDIO,
     };
 
     // Flags with optional parameters need to be long-options, as on MacOS,
     // there is no way to have single-character options with
     static constexpr struct option long_options[] = {
+#ifdef WITH_TIMG_AUDIO
+        {"audio",                no_argument,       NULL, OPT_AUDIO         },
+#endif
         {"auto-crop",            optional_argument, NULL, OPT_AUTO_CROP     },
         {"center",               no_argument,       NULL, 'C'               },
         {"clear",                optional_argument, NULL, OPT_CLEAR_SCREEN  },
@@ -576,6 +585,9 @@ int main(int argc, char *argv[]) {
             break;
         case OPT_FRAME_OFFSET: frame_offset = atoi(optarg); break;
         case OPT_FRAME_COUNT: max_frames = atoi(optarg); break;
+#ifdef WITH_TIMG_AUDIO
+        case OPT_AUDIO: display_opts.audio_enabled = true; break;
+#endif
         case 'a': display_opts.antialias = false; break;
         case 'b': bg_color = std::string(optarg); break;
         case 'B': bg_pattern_color = strdup(optarg); break;
@@ -942,6 +954,16 @@ int main(int argc, char *argv[]) {
 
     std::mutex errors_lock;  // Collect any errors to display later.
     std::deque<std::string> errors;
+
+#ifdef WITH_TIMG_AUDIO
+    if (display_opts.audio_enabled &&
+        (present.grid_cols > 1 || present.grid_rows > 1 ||
+         filelist.size() > 1)) {
+        fprintf(stderr,
+                "warning: --audio is ignored in grid/multi-file mode\n");
+        display_opts.audio_enabled = false;
+    }
+#endif
 
     // Async image loading, preparing them in a thread pool
     LoadedImageSources loaded_sources;
