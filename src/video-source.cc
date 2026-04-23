@@ -25,6 +25,7 @@
 #include <cstdarg>
 #include <cstddef>
 #include <cstdio>
+#include <chrono>
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -343,6 +344,42 @@ void VideoSource::SendFrames(const Duration &duration, int loops,
         int skip_offset      = frame_offset_;
         int decode_in_flight = 0;
 
+#ifdef WITH_TIMG_AUDIO
+        // Pre-roll: pump packets until AudioPlayer has first-frame PTS set
+        // (Now() >= 0) or a short deadline elapses, then Start().
+        if (audio_player_) {
+            const auto pre_roll_deadline =
+                std::chrono::steady_clock::now() +
+                std::chrono::milliseconds(500);
+            while (audio_player_->Now() < 0.0 &&
+                   !interrupt_received &&
+                   std::chrono::steady_clock::now() < pre_roll_deadline) {
+                if (av_read_frame(format_context_, packet) != 0) break;
+                if (packet->stream_index == audio_stream_index_ &&
+                    audio_codec_context_) {
+                    if (avcodec_send_packet(audio_codec_context_, packet) == 0) {
+                        AVFrame *af = av_frame_alloc();
+                        while (avcodec_receive_frame(audio_codec_context_, af)
+                               == 0) {
+                            audio_player_->Feed(af);
+                            av_frame_unref(af);
+                        }
+                        av_frame_free(&af);
+                    }
+                } else if (packet->stream_index == video_stream_index_) {
+                    // Don't lose any video packet read during pre-roll: feed
+                    // it to the video decoder so the steady-state loop can
+                    // pick it up via receive_frame.
+                    if (avcodec_send_packet(codec_context_, packet) == 0) {
+                        ++decode_in_flight;
+                    }
+                }
+                av_packet_unref(packet);
+            }
+            audio_player_->Start();
+        }
+#endif
+
         bool state_reading = true;
 
         while (!interrupt_received && time_from_first_frame < duration &&
@@ -354,6 +391,21 @@ void VideoSource::SendFrames(const Duration &duration, int loops,
             if (!state_reading && decode_in_flight == 0)
                 break;  // Decoder fully drained.
 
+#ifdef WITH_TIMG_AUDIO
+            if (state_reading && packet->stream_index == audio_stream_index_ &&
+                audio_player_ && audio_codec_context_) {
+                if (avcodec_send_packet(audio_codec_context_, packet) == 0) {
+                    AVFrame *af = av_frame_alloc();
+                    while (avcodec_receive_frame(audio_codec_context_, af) == 0) {
+                        audio_player_->Feed(af);
+                        av_frame_unref(af);
+                    }
+                    av_frame_free(&af);
+                }
+                av_packet_unref(packet);
+                continue;
+            }
+#endif
             if (state_reading && packet->stream_index != video_stream_index_) {
                 av_packet_unref(packet);
                 continue;  // Not a packet we're interested in
