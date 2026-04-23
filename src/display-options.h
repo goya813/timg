@@ -102,6 +102,10 @@ struct DisplayOptions {
 
     // Factor of pattern-size from the default
     int pattern_size = 1;
+
+    // Play audio track alongside video (macOS only; guarded by
+    // WITH_TIMG_AUDIO at the CLI level).
+    bool audio_enabled = false;
 };
 }  // namespace timg
 #endif  // DISPLAY_OPTIONS_H

@@ -17,6 +17,7 @@
 #define VIDEO_SOURCE_H_
 
 #include <csignal>
+#include <memory>
 #include <string>
 
 #include "display-options.h"
@@ -24,9 +25,13 @@
 #include "image-source.h"
 #include "renderer.h"
 #include "timg-time.h"
+#ifdef WITH_TIMG_AUDIO
+#include "audio-player.h"
+#endif
 
 struct AVCodecContext;
 struct AVFormatContext;
+struct AVCodecParameters;
 struct AVFrame;
 struct AVPacket;
 struct SwsContext;
@@ -75,6 +80,12 @@ private:
     timg::Duration frame_duration_;  // 1/fps
     timg::Framebuffer *terminal_fb_ = nullptr;
     int center_indentation_         = 0;
+
+    int audio_stream_index_              = -1;
+    AVCodecContext *audio_codec_context_ = nullptr;
+#ifdef WITH_TIMG_AUDIO
+    std::unique_ptr<AudioPlayer> audio_player_;
+#endif
 };
 
 }  // namespace timg

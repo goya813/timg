@@ -46,6 +46,7 @@ extern "C" {
 #include <libavformat/avformat.h>
 #include <libavutil/log.h>
 #include <libavutil/pixfmt.h>
+#include <libavutil/rational.h>
 #include <libswscale/swscale.h>
 }
 
@@ -110,6 +111,11 @@ VideoSource::VideoSource(const std::string &filename) : ImageSource(filename) {
 }
 
 VideoSource::~VideoSource() {
+#ifdef WITH_TIMG_AUDIO
+    if (audio_player_) audio_player_->Stop();
+    audio_player_.reset();
+#endif
+    if (audio_codec_context_) avcodec_free_context(&audio_codec_context_);
     sws_freeContext(sws_context_);
     avcodec_free_context(&codec_context_);
     avformat_close_input(&format_context_);
@@ -254,6 +260,33 @@ bool VideoSource::LoadAndScale(const DisplayOptions &display_options,
 
     // Framebuffer to interface with the timg TerminalCanvas
     terminal_fb_ = new timg::Framebuffer(target_width, target_height);
+
+#ifdef WITH_TIMG_AUDIO
+    if (display_options.audio_enabled) {
+        for (int i = 0; i < (int)format_context_->nb_streams; ++i) {
+            AVStream *s = format_context_->streams[i];
+            if (s->codecpar->codec_type != AVMEDIA_TYPE_AUDIO) continue;
+            const AVCodec *ac = avcodec_find_decoder(s->codecpar->codec_id);
+            if (!ac) break;
+            audio_codec_context_ = avcodec_alloc_context3(ac);
+            if (!audio_codec_context_) break;
+            if (avcodec_parameters_to_context(audio_codec_context_,
+                                              s->codecpar) < 0 ||
+                avcodec_open2(audio_codec_context_, ac, nullptr) < 0) {
+                avcodec_free_context(&audio_codec_context_);
+                break;
+            }
+            audio_stream_index_ = i;
+            audio_player_ = AudioPlayer::Create(s->codecpar, s->time_base);
+            if (!audio_player_) {
+                avcodec_free_context(&audio_codec_context_);
+                audio_stream_index_ = -1;
+            }
+            break;
+        }
+    }
+#endif
+
     return true;
 }
 
