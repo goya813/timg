@@ -8,6 +8,7 @@
 // CoreAudio (AudioQueue) backed AudioPlayer. macOS only.
 
 #include "audio-player.h"
+#include "audio-ring-buffer.h"
 
 extern "C" {
 #include <libavcodec/avcodec.h>
