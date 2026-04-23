@@ -323,6 +323,9 @@ void VideoSource::SendFrames(const Duration &duration, int loops,
         format_context_->streams[video_stream_index_]->time_base;
 #endif
     bool is_first    = true;
+#ifdef WITH_TIMG_AUDIO
+    double first_video_pts = -1.0;  // PTS of the first emitted video frame
+#endif
     timg::Duration time_from_first_frame;
 
     // We made guesses above if something is potentially an animation, but
@@ -341,6 +344,9 @@ void VideoSource::SendFrames(const Duration &duration, int loops,
             av_seek_frame(format_context_, video_stream_index_, 0,
                           AVSEEK_FLAG_ANY);
             avcodec_flush_buffers(codec_context_);
+#ifdef WITH_TIMG_AUDIO
+            first_video_pts = -1.0;
+#endif
         }
         observed_frame_count = 0;
         int remaining_frames = frame_count_;
@@ -435,7 +441,8 @@ void VideoSource::SendFrames(const Duration &duration, int loops,
                 }
 
 #ifdef WITH_TIMG_AUDIO
-                if (audio_player_) {
+                if (audio_player_ &&
+                    decode_frame->best_effort_timestamp != AV_NOPTS_VALUE) {
                     const double frame_pts =
                         decode_frame->best_effort_timestamp *
                         av_q2d(video_time_base);
@@ -454,9 +461,15 @@ void VideoSource::SendFrames(const Duration &duration, int loops,
                                 static_cast<int64_t>(capped_wait * 1e9)))
                                 .WaitUntil();
                         }
+                        if (first_video_pts < 0.0) first_video_pts = frame_pts;
+                        time_from_first_frame = Duration::Nanos(
+                            static_cast<int64_t>(
+                                (frame_pts - first_video_pts) * 1e9));
+                    } else {
+                        // Audio stream has no usable clock — fall back to
+                        // legacy frame-duration pacing for this frame.
+                        time_from_first_frame.Add(frame_duration_);
                     }
-                    time_from_first_frame = Duration::Nanos(
-                        static_cast<int64_t>(frame_pts * 1e9));
                 } else
 #endif
                 {
