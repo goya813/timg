@@ -81,9 +81,9 @@ private:
     timg::Framebuffer *terminal_fb_ = nullptr;
     int center_indentation_         = 0;
 
+#ifdef WITH_TIMG_AUDIO
     int audio_stream_index_              = -1;
     AVCodecContext *audio_codec_context_ = nullptr;
-#ifdef WITH_TIMG_AUDIO
     std::unique_ptr<AudioPlayer> audio_player_;
 #endif
 };

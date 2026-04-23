@@ -114,8 +114,8 @@ VideoSource::~VideoSource() {
 #ifdef WITH_TIMG_AUDIO
     if (audio_player_) audio_player_->Stop();
     audio_player_.reset();
-#endif
     if (audio_codec_context_) avcodec_free_context(&audio_codec_context_);
+#endif
     sws_freeContext(sws_context_);
     avcodec_free_context(&codec_context_);
     avformat_close_input(&format_context_);
@@ -267,7 +267,7 @@ bool VideoSource::LoadAndScale(const DisplayOptions &display_options,
             AVStream *s = format_context_->streams[i];
             if (s->codecpar->codec_type != AVMEDIA_TYPE_AUDIO) continue;
             const AVCodec *ac = avcodec_find_decoder(s->codecpar->codec_id);
-            if (!ac) break;
+            if (!ac) continue;  // try next audio stream if this codec is unsupported
             audio_codec_context_ = avcodec_alloc_context3(ac);
             if (!audio_codec_context_) break;
             if (avcodec_parameters_to_context(audio_codec_context_,
