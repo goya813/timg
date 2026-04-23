@@ -236,6 +236,9 @@ void AudioPlayer::Flush() {
     impl_->ring.Clear();
     impl_->played_frames.store(0, std::memory_order_release);
     impl_->base_pts.store(-1.0, std::memory_order_release);
+    // Reset stopping so a subsequent Start() re-enables enqueues in the
+    // output callback.
+    impl_->stopping.store(false, std::memory_order_release);
 }
 
 double AudioPlayer::Now() const {
