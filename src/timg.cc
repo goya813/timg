@@ -277,8 +277,8 @@ static int usage(const char *progname, ExitCode exit_code, int width,
         "\t-t<seconds>   : Stop after this time, independent of --loops or "
         "--frames\n"
 #ifdef WITH_TIMG_AUDIO
-        "\t--audio        : (macOS) Play the audio track of a video file.\n"
-        "\t                 Ignored in grid or multi-file mode.\n"
+        "\t--audio        : (macOS) Play the audio track of a video file; "
+        "ignored in grid/multi-file mode.\n"
 #endif
         ,
         default_title ? "='" : "", default_title ? default_title : "",
@@ -493,7 +493,9 @@ int main(int argc, char *argv[]) {
         OPT_MANPAGE_HELP,
         OPT_AUTO_CROP,
         OPT_SCROLL,
+#ifdef WITH_TIMG_AUDIO
         OPT_AUDIO,
+#endif
     };
 
     // Flags with optional parameters need to be long-options, as on MacOS,
@@ -960,7 +962,8 @@ int main(int argc, char *argv[]) {
         (present.grid_cols > 1 || present.grid_rows > 1 ||
          filelist.size() > 1)) {
         fprintf(stderr,
-                "warning: --audio is ignored in grid/multi-file mode\n");
+                "--audio: audio playback not supported in grid or "
+                "multi-file mode.\n");
         display_opts.audio_enabled = false;
     }
 #endif
