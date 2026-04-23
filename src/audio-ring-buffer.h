@@ -25,10 +25,12 @@ public:
 
     int channels() const { return channels_; }
 
-    // Number of frames currently readable. Safe to call from either side.
+    // Number of frames currently readable. Safe to call from either side;
+    // both atomic loads use acquire order so the producer side also gets
+    // an up-to-date view of the consumer's progress.
     std::size_t ReadableFrames() const {
         const std::size_t w = write_.load(std::memory_order_acquire);
-        const std::size_t r = read_.load(std::memory_order_relaxed);
+        const std::size_t r = read_.load(std::memory_order_acquire);
         return (w + capacity_ - r) % capacity_;
     }
 
