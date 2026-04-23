@@ -13,19 +13,18 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://gnu.org/licenses/gpl-2.0.txt>
 
-// TODO; help needed.
-// * sound output ((platform independently ?)
+// Audio output via AudioPlayer (macOS only, guarded by WITH_TIMG_AUDIO).
 
 #include "video-source.h"
 
 #include <strings.h>
 
 #include <algorithm>
+#include <chrono>
 #include <csignal>
 #include <cstdarg>
 #include <cstddef>
 #include <cstdio>
-#include <chrono>
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -376,7 +375,7 @@ void VideoSource::SendFrames(const Duration &duration, int loops,
                 }
                 av_packet_unref(packet);
             }
-            audio_player_->Start();
+            if (!interrupt_received) audio_player_->Start();
         }
 #endif
 
