@@ -35,6 +35,8 @@ public:
 
     // Feed a decoded audio AVFrame. Callee does not take ownership.
     // Blocks when the internal ring buffer is full (back-pressure).
+    // Note: if Start() has never been called, the ring fills within
+    // ~2 seconds and this call will spin until Stop() runs.
     void Feed(const AVFrame *frame);
 
     // Drop all buffered audio and reset the playback clock. Called at
@@ -43,7 +45,9 @@ public:
 
     // Current audio playback PTS in seconds (same origin as the
     // container's audio stream PTS). Returns a negative value before
-    // Start() or after Stop().
+    // Start(), after Stop(), or if the audio source has no PTS
+    // metadata (callers should treat negative as "unknown" and fall
+    // back to their non-audio timing path).
     double Now() const;
 
     // Begin playback. Idempotent. Call after enough samples have been

@@ -105,6 +105,8 @@ void AudioPlayer::OutputCallback(void *user_data,
     buffer->mAudioDataByteSize =
         static_cast<UInt32>(want * sizeof(float) * kDeviceChannels);
 
+    // Advance by full buffer size: CoreAudio plays `want` samples in real
+    // time even when part is zero-filled underrun padding.
     imp.played_frames.fetch_add(want, std::memory_order_release);
 
     if (!imp.stopping.load(std::memory_order_relaxed)) {
