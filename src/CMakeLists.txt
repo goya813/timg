@@ -104,9 +104,9 @@ if(WITH_VIDEO_DECODING)
   set(SHOULD_SCALE_SWS ON)  # we link it anyway
 endif()
 
-if(TIMG_AUDIO_SUPPORT)
-  target_sources(timg PRIVATE audio-player.h audio-player-macos.cc)
-  target_compile_definitions(timg PUBLIC TIMG_AUDIO_SUPPORT)
+if(WITH_TIMG_AUDIO)
+  target_sources(timg PUBLIC audio-player.h audio-player-macos.cc)
+  target_compile_definitions(timg PUBLIC WITH_TIMG_AUDIO)
   target_link_libraries(timg PkgConfig::SWRESAMPLE "-framework AudioToolbox")
 endif()
 

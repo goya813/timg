@@ -4,7 +4,7 @@
 
 **Goal:** Add opt-in audio playback to timg for video files on macOS, kept roughly in lip-sync with the terminal video rendering.
 
-**Architecture:** A new `AudioPlayer` class wraps CoreAudio AudioQueue. `VideoSource` detects an audio stream, decodes audio packets in the existing demux loop, and feeds PCM to `AudioPlayer`. Video frame pacing is switched from "frame count × frame duration" to "wait until audio clock catches up". Opt-in via `--audio`; single-file playback only; macOS-only code paths guarded by `TIMG_AUDIO_SUPPORT`.
+**Architecture:** A new `AudioPlayer` class wraps CoreAudio AudioQueue. `VideoSource` detects an audio stream, decodes audio packets in the existing demux loop, and feeds PCM to `AudioPlayer`. Video frame pacing is switched from "frame count × frame duration" to "wait until audio clock catches up". Opt-in via `--audio`; single-file playback only; macOS-only code paths guarded by `WITH_TIMG_AUDIO`.
 
 **Tech Stack:** C++17, ffmpeg libavcodec / libavformat / libswresample, CoreAudio AudioToolbox (AudioQueue), CMake.
 
@@ -29,7 +29,7 @@
 
 **New files:**
 - `src/audio-player.h` — public `AudioPlayer` API (platform-neutral header; methods compile to no-op on non-macOS, though we won't include it on non-macOS)
-- `src/audio-player-macos.cc` — CoreAudio AudioQueue implementation (compiled only when `TIMG_AUDIO_SUPPORT` is defined)
+- `src/audio-player-macos.cc` — CoreAudio AudioQueue implementation (compiled only when `WITH_TIMG_AUDIO` is defined)
 
 **Modified files:**
 - `CMakeLists.txt` — detect macOS, enable audio feature
@@ -47,7 +47,7 @@
 
 ## Task 1: CMake scaffolding and empty source files
 
-**Goal:** Wire `TIMG_AUDIO_SUPPORT`, link AudioToolbox and swresample, add empty `audio-player.h` + `audio-player-macos.cc` that compile cleanly on macOS and are invisible on other platforms. No behavior change yet.
+**Goal:** Wire `WITH_TIMG_AUDIO`, link AudioToolbox and swresample, add empty `audio-player.h` + `audio-player-macos.cc` that compile cleanly on macOS and are invisible on other platforms. No behavior change yet.
 
 **Files:**
 - Create: `src/audio-player.h`
@@ -176,7 +176,7 @@ Insert this block immediately after the existing `WITH_VIDEO_DECODING` pkg_check
 # building on Apple with video decoding enabled.
 if(APPLE AND WITH_VIDEO_DECODING)
   pkg_check_modules(SWRESAMPLE IMPORTED_TARGET REQUIRED libswresample)
-  set(TIMG_AUDIO_SUPPORT ON)
+  set(WITH_TIMG_AUDIO ON)
 endif()
 ```
 
@@ -185,9 +185,9 @@ endif()
 Add this block immediately after the `if(WITH_VIDEO_DECODING) ... endif()` block (ends around line 105, right before the STB_IMAGE block):
 
 ```cmake
-if(TIMG_AUDIO_SUPPORT)
-  target_sources(timg PRIVATE audio-player.h audio-player-macos.cc)
-  target_compile_definitions(timg PUBLIC TIMG_AUDIO_SUPPORT)
+if(WITH_TIMG_AUDIO)
+  target_sources(timg PUBLIC audio-player.h audio-player-macos.cc)
+  target_compile_definitions(timg PUBLIC WITH_TIMG_AUDIO)
   target_link_libraries(timg PkgConfig::SWRESAMPLE "-framework AudioToolbox")
 endif()
 ```
@@ -222,7 +222,7 @@ cd /Users/goya/projects/timg
 git add src/audio-player.h src/audio-player-macos.cc CMakeLists.txt src/CMakeLists.txt
 git commit -m "Scaffold macOS audio playback build wiring.
 
-Add TIMG_AUDIO_SUPPORT build option, link AudioToolbox framework and
+Add WITH_TIMG_AUDIO build option, link AudioToolbox framework and
 libswresample on macOS, introduce stub AudioPlayer class. No behavior
 change; all methods are no-ops for now."
 ```
@@ -808,7 +808,7 @@ In `src/display-options.h`, add this field at the end of the struct (after `int 
 
 ```cpp
     // Play audio track alongside video (macOS only; guarded by
-    // TIMG_AUDIO_SUPPORT at the CLI level).
+    // WITH_TIMG_AUDIO at the CLI level).
     bool audio_enabled = false;
 ```
 
@@ -824,7 +824,7 @@ In `src/video-source.h`:
 
 2. Add an include guard block for `audio-player.h` near the top (after `#include "timg-time.h"`):
     ```cpp
-    #ifdef TIMG_AUDIO_SUPPORT
+    #ifdef WITH_TIMG_AUDIO
     #include "audio-player.h"
     #endif
     ```
@@ -833,7 +833,7 @@ In `src/video-source.h`:
     ```cpp
         int audio_stream_index_               = -1;
         AVCodecContext *audio_codec_context_  = nullptr;
-    #ifdef TIMG_AUDIO_SUPPORT
+    #ifdef WITH_TIMG_AUDIO
         std::unique_ptr<AudioPlayer> audio_player_;
     #endif
     ```
@@ -847,7 +847,7 @@ In `src/video-source.cc`, add `#include <libavutil/rational.h>` inside the exist
 Then, at the end of `LoadAndScale` — right before the final `return true;` (around line 257) — insert:
 
 ```cpp
-#ifdef TIMG_AUDIO_SUPPORT
+#ifdef WITH_TIMG_AUDIO
     if (display_options.audio_enabled) {
         for (int i = 0; i < (int)format_context_->nb_streams; ++i) {
             AVStream *s = format_context_->streams[i];
@@ -879,7 +879,7 @@ Then, at the end of `LoadAndScale` — right before the final `return true;` (ar
 Find the `VideoSource::~VideoSource()` in `video-source.cc` (search for `VideoSource::~`). Add before its existing cleanup:
 
 ```cpp
-#ifdef TIMG_AUDIO_SUPPORT
+#ifdef WITH_TIMG_AUDIO
     if (audio_player_) audio_player_->Stop();
     audio_player_.reset();
 #endif
@@ -945,7 +945,7 @@ if (state_reading && packet->stream_index != video_stream_index_) {
 Replace it with:
 
 ```cpp
-#ifdef TIMG_AUDIO_SUPPORT
+#ifdef WITH_TIMG_AUDIO
             if (state_reading && packet->stream_index == audio_stream_index_ &&
                 audio_player_ && audio_codec_context_) {
                 if (avcodec_send_packet(audio_codec_context_, packet) == 0) {
@@ -971,7 +971,7 @@ Replace it with:
 Find the `for (int k = 0; ...)` outer loop (around line 298). Immediately after the `if (k > 0)` rewind block, add:
 
 ```cpp
-#ifdef TIMG_AUDIO_SUPPORT
+#ifdef WITH_TIMG_AUDIO
         // Pre-roll: pump packets until the audio player reports that
         // enough samples have queued, then Start(). Time out at ~0.5s
         // in real time so we don't hang on video-only files.
@@ -1056,7 +1056,7 @@ possible — fixed in the next commit."
 At the top of `SendFrames` (right after the `AVPacket *packet = av_packet_alloc();` line, around line 287), add:
 
 ```cpp
-#ifdef TIMG_AUDIO_SUPPORT
+#ifdef WITH_TIMG_AUDIO
     const AVRational video_time_base =
         format_context_->streams[video_stream_index_]->time_base;
 #endif
@@ -1084,7 +1084,7 @@ sink(center_indentation_, dy, *terminal_fb_,
 Replace it with:
 
 ```cpp
-#ifdef TIMG_AUDIO_SUPPORT
+#ifdef WITH_TIMG_AUDIO
                 if (audio_player_) {
                     const double frame_pts =
                         decode_frame->best_effort_timestamp *
@@ -1211,7 +1211,7 @@ if (k > 0) {
     av_seek_frame(format_context_, video_stream_index_, 0,
                   AVSEEK_FLAG_ANY);
     avcodec_flush_buffers(codec_context_);
-#ifdef TIMG_AUDIO_SUPPORT
+#ifdef WITH_TIMG_AUDIO
     if (audio_codec_context_) avcodec_flush_buffers(audio_codec_context_);
     if (audio_player_) audio_player_->Flush();
 #endif
@@ -1223,7 +1223,7 @@ if (k > 0) {
 At the very end of `SendFrames`, right after `av_packet_free(&packet);` (around line 369), add:
 
 ```cpp
-#ifdef TIMG_AUDIO_SUPPORT
+#ifdef WITH_TIMG_AUDIO
     if (audio_player_) audio_player_->Stop();
 #endif
 ```
@@ -1267,7 +1267,7 @@ audio promptly."
 
 ## Task 9: CLI — `--audio` flag and grid/multi-file guard
 
-**Goal:** Add `--audio` to the option parser. After option parsing, if the user asked for `--audio` but grid mode is active or multiple input files were provided, print a warning and force `audio_enabled = false`. On non-macOS builds the option doesn't exist (guarded by `TIMG_AUDIO_SUPPORT`).
+**Goal:** Add `--audio` to the option parser. After option parsing, if the user asked for `--audio` but grid mode is active or multiple input files were provided, print a warning and force `audio_enabled = false`. On non-macOS builds the option doesn't exist (guarded by `WITH_TIMG_AUDIO`).
 
 **Files:**
 - Modify: `src/timg.cc`
@@ -1289,7 +1289,7 @@ In `src/timg.cc`, find `enum LongOptionIds` (around line 474). Add a new member:
 In the `long_options` array (starts around line 495), in alphabetical order between `"auto-crop"` and `"center"`, insert:
 
 ```cpp
-#ifdef TIMG_AUDIO_SUPPORT
+#ifdef WITH_TIMG_AUDIO
         {"audio",                no_argument,       NULL, OPT_AUDIO         },
 #endif
 ```
@@ -1299,7 +1299,7 @@ In the `long_options` array (starts around line 495), in alphabetical order betw
 In the option-parsing switch (starts around line 526), find a logical spot — e.g., after `case OPT_FRAME_COUNT: max_frames = atoi(optarg); break;` (around line 578) — and insert:
 
 ```cpp
-#ifdef TIMG_AUDIO_SUPPORT
+#ifdef WITH_TIMG_AUDIO
         case OPT_AUDIO: display_opts.audio_enabled = true; break;
 #endif
 ```
@@ -1309,7 +1309,7 @@ In the option-parsing switch (starts around line 526), find a logical spot — e
 Find the block (around line 757) that sets `cell_size_warning_needed = (present.grid_cols > 1);` / forces `present.grid_cols = 1;`. Right after the grid decisions have settled and before `loaded_sources` is filled (around line 947), insert:
 
 ```cpp
-#ifdef TIMG_AUDIO_SUPPORT
+#ifdef WITH_TIMG_AUDIO
     if (display_opts.audio_enabled &&
         (present.grid_cols > 1 || present.grid_rows > 1 ||
          filelist.size() > 1)) {
@@ -1339,7 +1339,7 @@ grep -n "usage:\|Synopsis\|fprintf.*stderr.*-p<pix" /Users/goya/projects/timg/sr
 In the usage text, add a one-line description near the other video-related flags. If the usage is in `timg-help.cc` / generated, follow the same pattern:
 
 ```cpp
-#ifdef TIMG_AUDIO_SUPPORT
+#ifdef WITH_TIMG_AUDIO
     "\t--audio        : (macOS) Play the audio track of a video. Ignored "
     "in grid / multi-file mode.\n"
 #endif
@@ -1383,7 +1383,7 @@ git add src/timg.cc
 git commit -m "Add --audio CLI flag with grid / multi-file guard.
 
 Exposes the audio feature via --audio (macOS only; guarded by
-TIMG_AUDIO_SUPPORT). Forces audio off with a warning when combined
+WITH_TIMG_AUDIO). Forces audio off with a warning when combined
 with grid mode or multi-file input."
 ```
 
@@ -1452,7 +1452,7 @@ Expected: ~9 feature commits + the spec commit.
 | §2 Audio-as-master sync (±50 ms) | Tasks 4, 7 |
 | §2 Grid/multi-file forced off with warning | Task 9 |
 | §2 Loop supported | Task 8 |
-| §2 macOS-only, no flag on other platforms | Tasks 1, 9 (guard by `TIMG_AUDIO_SUPPORT`) |
+| §2 macOS-only, no flag on other platforms | Tasks 1, 9 (guard by `WITH_TIMG_AUDIO`) |
 | §3 Architecture (AudioPlayer + VideoSource extension) | Tasks 1-8 |
 | §3 CMake build branch on `APPLE AND WITH_VIDEO_DECODING` | Task 1 |
 | §4.1 AudioPlayer public API | Tasks 1 (decl), 3-4 (impl) |
@@ -1476,7 +1476,7 @@ All spec sections have corresponding tasks.
 - `AudioPlayer::Now()` / `Flush()` / `Start()` / `Stop()` — consistent across Tasks 1, 4, 5, 6, 8.
 - `AudioRingBuffer::Write/Read` — one definition (Task 2), one set of callers (Task 4).
 - `DisplayOptions::audio_enabled` — defined Task 5, used Task 9.
-- `TIMG_AUDIO_SUPPORT` macro — defined Task 1, used Tasks 1, 5, 6, 7, 8, 9.
+- `WITH_TIMG_AUDIO` macro — defined Task 1, used Tasks 1, 5, 6, 7, 8, 9.
 - `OutputCallback` signature changed between Tasks 3 and 4 (from free function to member). Task 4 calls this out explicitly with step-by-step migration.
 
 **Scope check:** One subsystem (macOS audio playback for video). ≈10 commits, all in a single feature branch. Reasonable for one plan.

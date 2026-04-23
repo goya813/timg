@@ -81,7 +81,7 @@ endif()
 # building on Apple with video decoding enabled.
 if(APPLE AND WITH_VIDEO_DECODING)
   pkg_check_modules(SWRESAMPLE IMPORTED_TARGET REQUIRED libswresample)
-  set(TIMG_AUDIO_SUPPORT ON)
+  set(WITH_TIMG_AUDIO ON)
 endif()
 
 find_package(Threads)

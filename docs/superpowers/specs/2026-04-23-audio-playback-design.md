@@ -62,10 +62,10 @@ One new component, `AudioPlayer`, wraps CoreAudio's `AudioQueue` API. `VideoSour
 ### Build configuration
 
 - macOS only. Build system detects Apple via `if(APPLE AND WITH_VIDEO_DECODING)` in CMake.
-- Define `TIMG_AUDIO_SUPPORT` preprocessor macro on that branch.
+- Define `WITH_TIMG_AUDIO` preprocessor macro on that branch.
 - `audio-player-macos.cc` is compiled only on that branch.
 - `AudioToolbox.framework` is linked only on that branch.
-- The header `audio-player.h` itself can be included unconditionally; all public methods are compiled out to no-op when `TIMG_AUDIO_SUPPORT` is undefined, or the header is simply not included from non-macOS code.
+- The header `audio-player.h` itself can be included unconditionally; all public methods are compiled out to no-op when `WITH_TIMG_AUDIO` is undefined, or the header is simply not included from non-macOS code.
 - On non-macOS builds, the `--audio` flag is not added to the option parser — `getopt` will reject it as unknown.
 
 ## 4. Components
@@ -133,7 +133,7 @@ Destructor: `avcodec_free_context(&audio_codec_context_)` in addition to existin
 
 ### 4.3 `timg.cc` (CLI) changes
 
-Guarded by `#if defined(TIMG_AUDIO_SUPPORT)`:
+Guarded by `#if defined(WITH_TIMG_AUDIO)`:
 - Add `--audio` (long option only) to the option table and usage text (one-line description). Do not attach a short form; `-a` is already used for `antialias=false`.
 - Plumb the flag into the options struct passed to `VideoSource`.
 - After option parsing, if (`grid cols > 1 OR grid rows > 1 OR input file count > 1`) AND `audio_enabled`: print `warning: --audio is ignored in grid/multi-file mode` to stderr and force `audio_enabled = false`.
