@@ -318,6 +318,10 @@ void VideoSource::SendFrames(const Duration &duration, int loops,
     if (loops == timg::kNotInitialized && !animated_png) loops = 1;
 
     AVPacket *packet = av_packet_alloc();
+#ifdef WITH_TIMG_AUDIO
+    const AVRational video_time_base =
+        format_context_->streams[video_stream_index_]->time_base;
+#endif
     bool is_first    = true;
     timg::Duration time_from_first_frame;
 
@@ -430,7 +434,34 @@ void VideoSource::SendFrames(const Duration &duration, int loops,
                     continue;
                 }
 
-                time_from_first_frame.Add(frame_duration_);
+#ifdef WITH_TIMG_AUDIO
+                if (audio_player_) {
+                    const double frame_pts =
+                        decode_frame->best_effort_timestamp *
+                        av_q2d(video_time_base);
+                    const double audio_now = audio_player_->Now();
+                    if (audio_now >= 0.0) {
+                        const double wait = frame_pts - audio_now;
+                        if (wait < -0.1) {
+                            // 100 ms or more behind — drop this video frame.
+                            ++observed_frame_count;
+                            if (frame_limit) --remaining_frames;
+                            continue;
+                        }
+                        const double capped_wait = wait > 0.5 ? 0.5 : wait;
+                        if (capped_wait > 0.0) {
+                            (Time::Now() + Duration::Nanos(
+                                static_cast<int64_t>(capped_wait * 1e9)))
+                                .WaitUntil();
+                        }
+                    }
+                    time_from_first_frame = Duration::Nanos(
+                        static_cast<int64_t>(frame_pts * 1e9));
+                } else
+#endif
+                {
+                    time_from_first_frame.Add(frame_duration_);
+                }
                 // TODO: when frame skipping enabled, avoid this step if we're
                 // falling behind.
                 sws_scale(sws_context_, decode_frame->data,
