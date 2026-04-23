@@ -54,6 +54,7 @@ public:
     void Stop();
 
 private:
+    static void OutputCallback(void *user_data, void *queue, void *buffer);
     AudioPlayer();
     struct Impl;
     std::unique_ptr<Impl> impl_;
