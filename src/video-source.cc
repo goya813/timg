@@ -346,6 +346,8 @@ void VideoSource::SendFrames(const Duration &duration, int loops,
             avcodec_flush_buffers(codec_context_);
 #ifdef WITH_TIMG_AUDIO
             first_video_pts = -1.0;
+            if (audio_codec_context_) avcodec_flush_buffers(audio_codec_context_);
+            if (audio_player_) audio_player_->Flush();
 #endif
         }
         observed_frame_count = 0;
@@ -495,6 +497,9 @@ void VideoSource::SendFrames(const Duration &duration, int loops,
 
     av_frame_free(&decode_frame);
     av_packet_free(&packet);
+#ifdef WITH_TIMG_AUDIO
+    if (audio_player_) audio_player_->Stop();
+#endif
 }
 
 }  // namespace timg
