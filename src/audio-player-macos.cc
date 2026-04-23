@@ -37,12 +37,15 @@ constexpr int    kBufferCount        = 4;
 constexpr std::size_t kRingCapacityFrames =
     static_cast<std::size_t>(kDeviceSampleRate * 2.0);  // 2 seconds
 
-void WarnOnce(const char *msg) {
-    static std::atomic<bool> warned{false};
-    if (!warned.exchange(true)) {
-        std::fprintf(stderr, "timg audio: %s\n", msg);
-    }
-}
+// Print a message to stderr at most once per call site. The static
+// guard is scoped to the enclosing block, so each WARN_ONCE site has
+// its own flag and each distinct failure class prints once.
+#define WARN_ONCE(msg) do {                                     \
+    static std::atomic<bool> timg_audio_warned{false};          \
+    if (!timg_audio_warned.exchange(true)) {                    \
+        std::fprintf(stderr, "timg audio: %s\n", msg);          \
+    }                                                           \
+} while (0)
 
 }  // namespace
 
@@ -83,9 +86,8 @@ std::unique_ptr<AudioPlayer> AudioPlayer::Create(
     const AVCodecParameters *codecpar, AVRational /*time_base*/) {
     if (!codecpar) return nullptr;
 
-    const AVCodec *decoder = avcodec_find_decoder(codecpar->codec_id);
-    if (!decoder) {
-        WarnOnce("audio codec unsupported, playing silent");
+    if (!avcodec_find_decoder(codecpar->codec_id)) {
+        WARN_ONCE("audio codec unsupported, playing silent");
         return nullptr;
     }
 
@@ -94,7 +96,7 @@ std::unique_ptr<AudioPlayer> AudioPlayer::Create(
 
     // --- swresample setup ---
     AVChannelLayout out_layout = AV_CHANNEL_LAYOUT_STEREO;
-    AVChannelLayout in_layout;
+    AVChannelLayout in_layout{};
     if (codecpar->ch_layout.nb_channels > 0 &&
         codecpar->ch_layout.order != AV_CHANNEL_ORDER_UNSPEC) {
         av_channel_layout_copy(&in_layout, &codecpar->ch_layout);
@@ -113,7 +115,7 @@ std::unique_ptr<AudioPlayer> AudioPlayer::Create(
         codecpar->sample_rate, 0, nullptr);
     av_channel_layout_uninit(&in_layout);
     if (rc < 0 || !imp.swr || swr_init(imp.swr) < 0) {
-        WarnOnce("audio resampler init failed, playing silent");
+        WARN_ONCE("audio resampler init failed, playing silent");
         return nullptr;
     }
 
@@ -122,16 +124,16 @@ std::unique_ptr<AudioPlayer> AudioPlayer::Create(
     fmt.mSampleRate       = kDeviceSampleRate;
     fmt.mFormatID         = kAudioFormatLinearPCM;
     fmt.mFormatFlags      = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
-    fmt.mBytesPerPacket   = sizeof(float) * kDeviceChannels;
+    fmt.mBytesPerPacket   = static_cast<UInt32>(sizeof(float) * kDeviceChannels);
     fmt.mFramesPerPacket  = 1;
-    fmt.mBytesPerFrame    = sizeof(float) * kDeviceChannels;
-    fmt.mChannelsPerFrame = kDeviceChannels;
+    fmt.mBytesPerFrame    = static_cast<UInt32>(sizeof(float) * kDeviceChannels);
+    fmt.mChannelsPerFrame = static_cast<UInt32>(kDeviceChannels);
     fmt.mBitsPerChannel   = 32;
 
     OSStatus os = AudioQueueNewOutput(&fmt, &OutputCallbackStub, player.get(),
                                       nullptr, nullptr, 0, &imp.queue);
     if (os != noErr) {
-        WarnOnce("AudioQueueNewOutput failed, playing silent");
+        WARN_ONCE("AudioQueueNewOutput failed, playing silent");
         return nullptr;
     }
 
@@ -139,7 +141,7 @@ std::unique_ptr<AudioPlayer> AudioPlayer::Create(
     for (int i = 0; i < kBufferCount; ++i) {
         os = AudioQueueAllocateBuffer(imp.queue, buf_bytes, &imp.buffers[i]);
         if (os != noErr) {
-            WarnOnce("AudioQueueAllocateBuffer failed, playing silent");
+            WARN_ONCE("AudioQueueAllocateBuffer failed, playing silent");
             return nullptr;
         }
     }
@@ -167,7 +169,7 @@ void AudioPlayer::Start() {
     if (AudioQueueStart(impl_->queue, nullptr) == noErr) {
         impl_->running.store(true);
     } else {
-        WarnOnce("AudioQueueStart failed, playing silent");
+        WARN_ONCE("AudioQueueStart failed, playing silent");
     }
 }
 
