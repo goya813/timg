@@ -1,6 +1,10 @@
 // -*- mode: c++; c-basic-offset: 4; indent-tabs-mode: nil; -*-
 // (c) 2026 timg authors
 //
+// This program is free software; you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation version 2.
+//
 // Single-producer / single-consumer ring buffer for interleaved float32
 // audio samples. Used by AudioPlayer to hand PCM from the decode thread
 // to the CoreAudio callback thread. Header-only.
