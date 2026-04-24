@@ -69,6 +69,24 @@ grid uses `--grid=2` and is pixelated `-p iterm2`).
 
 </details>
 
+#### Audio playback (macOS)
+
+On macOS builds, pass `--audio` to play the video's audio track through
+CoreAudio alongside the terminal rendering. The audio clock drives video
+pacing for approximate lip sync (±50 ms target, not professional grade).
+
+Audio is opt-in and applies only to single-file playback — `--audio` is
+silently ignored (with a warning) when combined with `--grid` or multiple
+input files. If the video has no audio, an unsupported codec, or the
+output device is unavailable, playback falls back to silent video.
+
+```bash
+timg --audio clip.mp4                     # video + sound
+timg --audio --loops=3 clip.mp4           # audio restarts at each loop
+```
+
+This feature is macOS-only; the flag does not exist on non-Apple builds.
+
 ### Synopsis
 
 ```
@@ -144,6 +162,8 @@ Options (most common first):
         --frames=<num>: Only show first num frames (if looping, loop only these)
         --frame-offset=<num>: Start animation/video at this frame
         -t<seconds>   : Stop after this time, independent of --loops or --frames
+        --audio       : (macOS) Play the audio track of a video file;
+                        ignored in grid/multi-file mode.
 ```
 
 ### Examples
@@ -554,6 +574,11 @@ brew install openslide
 
 brew install pandoc  # If you want to recreate the man page
 ```
+
+Audio playback (CoreAudio via `AudioToolbox.framework` + `libswresample`)
+is automatically enabled on macOS when video decoding is enabled; no extra
+dependency beyond `ffmpeg` is required. The `--audio` flag becomes
+available after building.
 
 #### Get repo and compile timg
 
